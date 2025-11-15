@@ -1,0 +1,24 @@
+{
+  "name": "aura-backend",
+  "version": "1.0.0",
+  "description": "Backend para Aura con integración a OpenAI y Google Secret Manager",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "deploy": "gcloud run deploy aura-backend --source . --region \"southamerica-west1\" --allow-unauthenticated --set-secrets=\"OPENAI_API_KEY=OPENAI_API_KEY:latest\" --set-secrets=\"JWT_SECRET=JWT_SECRET:latest\" --add-cloudsql-instances \"aura-operations:southamerica-west1:aura-db-santiago\" --max-instances \"100\" --min-instances \"0\" --cpu \"1\" --memory \"256Mi\""
+  },
+  "dependencies": {
+    "@google-cloud/secret-manager": "^6.1.1",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "openai": "^4.104.0",
+    "pg": "^8.16.3"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "author": "",
+  "license": "ISC"
+}
