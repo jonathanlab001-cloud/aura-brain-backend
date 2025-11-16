@@ -14,25 +14,39 @@ jobs:
         id: decode
         run: |
           set -euo pipefail
-          # Decodificar secret base64 a archivo (más robusto que secreto crudo)
-          echo "${{ secrets.GCP_SA_KEY_B64 }}" | base64 --decode > /tmp/sa.json
+
+          # Decodificar secret base64 a un archivo temporal y validar con jq
+          printf '%s' "${{ secrets.GCP_SA_KEY_B64 }}" | base64 --decode > /tmp/sa.json
           chmod 600 /tmp/sa.json
           echo "Size (bytes): $(wc -c < /tmp/sa.json)"
           jq -e . /tmp/sa.json
 
-      - name: Authenticate to GCP using SA key file
+          # Inyectar el JSON decodificado como variable de entorno multilínea SA_JSON
+          # (Se escribe en GITHUB_ENV en formato heredoc para preservar los saltos de línea)
+          echo "SA_JSON<<EOF" >> $GITHUB_ENV
+          cat /tmp/sa.json >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Authenticate to GCP using decoded credentials_json
         uses: google-github-actions/auth@v1
         with:
-          credentials_file: /tmp/sa.json
+          credentials_json: ${{ env.SA_JSON }}
+          create_credentials_file: true
+          export_environment_variables: true
+          access_token_scopes: https://www.googleapis.com/auth/cloud-platform
 
       - name: Verify authentication / list project info
         run: |
-          # Usa el secret GCP_PROJECT (asegúrate de tenerlo configurado)
+          set -euo pipefail
+          echo "GCP_PROJECT (secret) = ${{ secrets.GCP_PROJECT }}"
+          # Comprueba que gcloud está usando las credenciales creadas por la action
+          gcloud auth list --filter=status:ACTIVE --format="value(account)"
+          # Verifica el proyecto y lista policy (requiere permisos)
           gcloud projects describe "${{ secrets.GCP_PROJECT }}" --format="value(projectId)"
-          # Prueba una llamada que requiere permisos:
           gcloud projects get-iam-policy "${{ secrets.GCP_PROJECT }}" --format=json | jq 'keys'
 
       - name: Clean up SA key file
         if: always()
         run: |
+          # Borra el archivo local de credenciales
           shred -u /tmp/sa.json || rm -f /tmp/sa.json || true
