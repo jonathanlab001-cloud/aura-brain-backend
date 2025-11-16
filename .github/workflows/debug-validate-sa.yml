@@ -1,4 +1,4 @@
-name: "Debug Validate GCP SA JSON"
+﻿name: Debug Validate GCP SA JSON
 
 on:
   workflow_dispatch:
@@ -7,14 +7,32 @@ jobs:
   validate-sa:
     runs-on: ubuntu-latest
     steps:
-      - name: "Checkout"
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: "Install jq"
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: "Debug: write and validate SA JSON"
+      - name: Decode debug SA key and validate JSON
+        id: decode
         run: |
-          echo "${{ secrets.GCP_SA_KEY }}" > /tmp/sa.json
+          set -euo pipefail
+          # Decodificar secret base64 a archivo (más robusto que secreto crudo)
+          echo "${{ secrets.GCP_SA_KEY_B64 }}" | base64 --decode > /tmp/sa.json
+          chmod 600 /tmp/sa.json
           echo "Size (bytes): $(wc -c < /tmp/sa.json)"
           jq -e . /tmp/sa.json
+
+      - name: Authenticate to GCP using SA key file
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_file: /tmp/sa.json
+
+      - name: Verify authentication / list project info
+        run: |
+          # Usa el secret GCP_PROJECT (asegúrate de tenerlo configurado)
+          gcloud projects describe "${{ secrets.GCP_PROJECT }}" --format="value(projectId)"
+          # Prueba una llamada que requiere permisos:
+          gcloud projects get-iam-policy "${{ secrets.GCP_PROJECT }}" --format=json | jq 'keys'
+
+      - name: Clean up SA key file
+        if: always()
+        run: |
+          shred -u /tmp/sa.json || rm -f /tmp/sa.json || true
