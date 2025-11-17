@@ -1,4 +1,4 @@
-﻿name: Debug Validate GCP SA JSON
+name: Debug Validate GCP SA JSON
 
 on:
   workflow_dispatch:
@@ -14,25 +14,22 @@ jobs:
         id: decode
         run: |
           set -euo pipefail
-          # Decodificar secret base64 a archivo (más robusto que secreto crudo)
-          echo "${{ secrets.GCP_SA_KEY_B64 }}" | base64 --decode > /tmp/sa.json
-          chmod 600 /tmp/sa.json
-          echo "Size (bytes): $(wc -c < /tmp/sa.json)"
-          jq -e . /tmp/sa.json
+          # Decodificar secret y exponerlo como output del step
+          SA_JSON=$(echo "${{ secrets.GCP_SA_KEY_B64 }}" | base64 --decode)
+          echo "sa<<EOF" >> $GITHUB_OUTPUT
+          echo "$SA_JSON" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          # Validar el JSON para fallar rápido si está corrupto
+          echo "$SA_JSON" | jq -e .
 
-      - name: Authenticate to GCP using SA key file
+      - name: Authenticate to GCP using decoded credentials_json
         uses: google-github-actions/auth@v1
         with:
-          credentials_file: /tmp/sa.json
+          credentials_json: ${{ steps.decode.outputs.sa }}
 
       - name: Verify authentication / list project info
         run: |
-          # Usa el secret GCP_PROJECT (asegúrate de tenerlo configurado)
+          set -euo pipefail
+          gcloud auth list --filter=status:ACTIVE --format="value(account)"
           gcloud projects describe "${{ secrets.GCP_PROJECT }}" --format="value(projectId)"
-          # Prueba una llamada que requiere permisos:
-          gcloud projects get-iam-policy "${{ secrets.GCP_PROJECT }}" --format=json | jq 'keys'
 
-      - name: Clean up SA key file
-        if: always()
-        run: |
-          shred -u /tmp/sa.json || rm -f /tmp/sa.json || true
