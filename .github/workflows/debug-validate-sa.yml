@@ -21,16 +21,15 @@ jobs:
           echo "Size (bytes): $(wc -c < /tmp/sa.json)"
           jq -e . /tmp/sa.json
 
-          # Inyectar el JSON decodificado como variable de entorno multilínea SA_JSON
-          # (Se escribe en GITHUB_ENV en formato heredoc para preservar los saltos de línea)
-          echo "SA_JSON<<EOF" >> $GITHUB_ENV
-          cat /tmp/sa.json >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          # Exponer el JSON decodificado como output del step (multilínea)
+          echo "sa<<EOF" >> $GITHUB_OUTPUT
+          cat /tmp/sa.json >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Authenticate to GCP using decoded credentials_json
+      - name: Authenticate to GCP using decoded credentials_json (from step output)
         uses: google-github-actions/auth@v1
         with:
-          credentials_json: ${{ env.SA_JSON }}
+          credentials_json: ${{ steps.decode.outputs.sa }}
           create_credentials_file: true
           export_environment_variables: true
           access_token_scopes: https://www.googleapis.com/auth/cloud-platform
@@ -39,14 +38,11 @@ jobs:
         run: |
           set -euo pipefail
           echo "GCP_PROJECT (secret) = ${{ secrets.GCP_PROJECT }}"
-          # Comprueba que gcloud está usando las credenciales creadas por la action
           gcloud auth list --filter=status:ACTIVE --format="value(account)"
-          # Verifica el proyecto y lista policy (requiere permisos)
           gcloud projects describe "${{ secrets.GCP_PROJECT }}" --format="value(projectId)"
           gcloud projects get-iam-policy "${{ secrets.GCP_PROJECT }}" --format=json | jq 'keys'
 
       - name: Clean up SA key file
         if: always()
         run: |
-          # Borra el archivo local de credenciales
           shred -u /tmp/sa.json || rm -f /tmp/sa.json || true
